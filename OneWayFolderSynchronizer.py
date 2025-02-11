@@ -18,31 +18,46 @@ def sync_replica_with_source(source_path, replica_path):
 
     os.makedirs(replica_path, exist_ok=True)
 
-    for root, _, files in os.walk(source_path):
+    # Copy directories and files from source into the replica
+    for root, dirs, files in os.walk(source_path):
+        for dir in dirs:
+            source_dir = os.path.join(root, dir)
+            rel_path = os.path.relpath(source_dir, source_path)
+            target_dir = os.path.join(replica_path, rel_path)
+            os.makedirs(target_dir, exist_ok=True)
+
         for file in files:
             source_file = os.path.join(root, file)
             rel_path = os.path.relpath(source_file, source_path)
             target_file = os.path.join(replica_path, rel_path)
             os.makedirs(os.path.dirname(target_file), exist_ok=True)
 
-            should_copy = False
-            if not os.path.exists(target_file):
-                should_copy = True
-            else:
-                # Compare files with the same path and name to see if they're equal
-                if not filecmp.cmp(source_file, target_file, shallow=False):
-                    should_copy = True
-
-            if should_copy:
+            # Check first if file doesn't exist, and then if it's different to the source. Copy if any verify
+            if not os.path.exists(target_file) or not filecmp.cmp(source_file, target_file, shallow=False):
                 shutil.copy2(source_file, target_file)
 
-    # Missing second part where it checks if replica has files that do not exist in source
+    # Remove directories and files present in the replica that aren't present in the source
+    for root, dirs, files in os.walk(replica_path, topdown=False):
+        for file in files:
+            target_file = os.path.join(root, file)
+            rel_path = os.path.relpath(target_file, replica_path)
+            source_file = os.path.join(source_path, rel_path)
+
+            if not os.path.exists(source_file):
+                os.remove(target_file)
+
+        for dir_name in dirs:
+            target_dir_path = os.path.join(root, dir_name)
+            rel_path = os.path.relpath(target_dir_path, replica_path)
+            source_dir_path = os.path.join(source_path, rel_path)
+
+            if not os.path.exists(source_dir_path):
+                os.rmdir(target_dir_path)
     return True
 
 
 def main():
 
-    # Set up parsing for collecting command line arguments
     parser = argparse.ArgumentParser(
         description="This tool replicates a directory into another directory. Synchronization is periodic."
     )
